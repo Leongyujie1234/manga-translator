@@ -1,9 +1,19 @@
 import re
-import requests
 import os
-import time
+import cloudscraper
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
+
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+HEADERS = {"User-Agent": UA, "Accept": "application/json, text/html", "Accept-Language": "en-US,en;q=0.9"}
+IMG_HEADERS = {"User-Agent": UA, "Referer": "https://nhentai.net/", "Accept": "image/webp,image/*"}  # noqa: S105 - public referer only
+
+
+def _get_scraper():
+    return cloudscraper.create_scraper(
+        browser={"custom": UA},
+        delay=10,
+    )
 
 
 def fetch_nhentai(gallery_url, download_dir):
@@ -11,57 +21,47 @@ def fetch_nhentai(gallery_url, download_dir):
     for m in re.finditer(r"/g/(\d+)", gallery_url):
         gallery_id = m.group(1)
         break
-
     if not gallery_id:
         return []
 
-    api_url = f"https://nhentai.net/api/gallery/{gallery_id}"
-    headers = {"User-Agent": "MangaTranslator/1.0"}
-    resp = requests.get(api_url, headers=headers, timeout=30)
-    if resp.status_code != 200:
+    api_url = f"https://nhentai.net/api/v2/galleries/{gallery_id}"
+    scraper = _get_scraper()
+    try:
+        resp = scraper.get(api_url, headers=HEADERS, timeout=30)
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+    except Exception:
         return []
 
-    data = resp.json()
     media_id = data.get("media_id", "")
-    base_url = f"https://i.nhentai.net/galleries/{media_id}"
-    num_pages = data.get("num_pages", 0)
+    pages_data = data.get("pages", [])
+    if not media_id or not pages_data:
+        return []
 
-    exts = ["jpg", "png", "webp"]
     urls = []
-    for page in range(1, num_pages + 1):
-        found = False
-        images = data.get("images", {}).get("pages", [])
-        if images and page - 1 < len(images):
-            img_ext = images[page - 1].get("t", "j")
-            if img_ext == "j":
-                img_ext = "jpg"
-            ext = img_ext if img_ext in exts else "jpg"
-            urls.append((f"{base_url}/{page}.{ext}", page))
-            found = True
-        if not found:
-            for ext in exts:
-                urls.append((f"{base_url}/{page}.{ext}", page))
-                break
+    for p in pages_data:
+        num = p.get("number", 0)
+        path = p.get("path", "")
+        ext = os.path.splitext(path)[1] if path else ".webp"
+        if not ext:
+            ext = ".webp"
+        urls.append((f"https://i.nhentai.net/{path}", num))
 
     return _download_parallel(urls, download_dir)
 
 
 def fetch_generic(url, download_dir):
-    headers = {"User-Agent": "MangaTranslator/1.0"}
+    scraper = _get_scraper()
     try:
-        resp = requests.get(url, headers=headers, timeout=30)
+        resp = scraper.get(url, headers=HEADERS, timeout=30)
         resp.raise_for_status()
     except Exception as e:
-        return [str(e)]
+        return []
 
     content_type = resp.headers.get("Content-Type", "")
-    ext_map = {
-        "image/jpeg": ".jpg", "image/png": ".png",
-        "image/webp": ".webp", "image/bmp": ".bmp",
-    }
-
-    if any(ct in content_type for ct in ext_map):
-        ext = ext_map.get(content_type.split(";")[0].strip(), ".jpg")
+    if "image/" in content_type:
+        ext = ".jpg" if "jpeg" in content_type else ".png" if "png" in content_type else ".webp"
         path = os.path.join(download_dir, f"page_001{ext}")
         with open(path, "wb") as f:
             f.write(resp.content)
@@ -72,7 +72,6 @@ def fetch_generic(url, download_dir):
         url_clean = m.group(1).split("?")[0]
         if url_clean not in img_urls:
             img_urls.append(url_clean)
-
     if not img_urls:
         return []
 
@@ -82,9 +81,9 @@ def fetch_generic(url, download_dir):
 
 def _download_one(args):
     url, page, dl_dir = args
-    headers = {"User-Agent": "MangaTranslator/1.0", "Referer": "https://nhentai.net/"}
+    scraper = _get_scraper()
     try:
-        resp = requests.get(url, headers=headers, timeout=30)
+        resp = scraper.get(url, headers=IMG_HEADERS, timeout=30)
         resp.raise_for_status()
         ext = os.path.splitext(urlparse(url).path)[1]
         if not ext or len(ext) > 5:
@@ -108,5 +107,6 @@ def _download_parallel(urls, dl_dir, workers=8):
             results.append(f.result())
     return sorted(
         [r for r in results if r and not r.startswith("ERR:")],
-        key=lambda p: int(re.search(r"page_(\d+)", os.path.basename(p)).group(1)) if re.search(r"page_(\d+)", os.path.basename(p)) else 0,
+        key=lambda p: int(re.search(r"page_(\d+)", os.path.basename(p)).group(1))
+        if re.search(r"page_(\d+)", os.path.basename(p)) else 0,
     )
