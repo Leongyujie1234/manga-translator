@@ -12,7 +12,7 @@ import requests
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 OR_URL = "https://openrouter.ai/api/v1/chat/completions"
-DETECT_MODEL = "google/gemini-2.5-flash"
+DETECT_MODEL = "qwen/qwen3-vl-8b-instruct"
 TRANSLATE_MODEL = "deepseek/deepseek-chat"
 _font_path = None
 
