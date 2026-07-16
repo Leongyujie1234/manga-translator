@@ -12,7 +12,7 @@ from flask import Flask, request, jsonify, render_template, send_file
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 from fetcher import fetch_nhentai, fetch_generic
-from pipeline import process_single, OR_MODEL
+from pipeline import process_single, DETECT_MODEL, TRANSLATE_MODEL
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
@@ -90,7 +90,7 @@ def process_session(session_id, url, api_key):
 @app.route("/")
 def index():
     api_key = get_api_key()
-    return render_template("index.html", has_key=bool(api_key), model=OR_MODEL)
+    return render_template("index.html", has_key=bool(api_key), model=f"{DETECT_MODEL} + {TRANSLATE_MODEL}")
 
 
 @app.route("/start", methods=["POST"])
@@ -211,6 +211,7 @@ if __name__ == "__main__":
         print("WARNING: No OpenRouter API key found!")
         print("  Set env: $env:OPENROUTER_KEY='sk-or-...'")
     else:
-        print(f"Model: {OR_MODEL}")
+        print(f"Detect: {DETECT_MODEL}")
+        print(f"Translate: {TRANSLATE_MODEL}")
     print("Starting at http://localhost:5000")
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
