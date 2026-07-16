@@ -13,7 +13,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 
 OR_URL = "https://openrouter.ai/api/v1/chat/completions"
 DETECT_MODEL = "google/gemini-2.5-flash"
-TRANSLATE_MODEL = "anthropic/claude-3.5-haiku"
+TRANSLATE_MODEL = "deepseek/deepseek-chat"
 _font_path = None
 
 
@@ -59,7 +59,7 @@ def detect_with_gemini(img_path, api_key):
     )
 
     body = {
-        "model": "google/gemini-2.5-flash",
+        "model": DETECT_MODEL,
         "messages": [{
             "role": "user",
             "content": [
@@ -103,7 +103,7 @@ def translate_with_claude(entries, api_key):
         prompt += f"{i}: {t}\n"
 
     body = {
-        "model": "anthropic/claude-3.5-haiku",
+        "model": TRANSLATE_MODEL,
         "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}],
         "response_format": {"type": "json_object"},
         "max_tokens": 4096,
