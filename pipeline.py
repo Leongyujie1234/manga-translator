@@ -53,12 +53,9 @@ def detect_with_gemini(img_path, api_key):
         b64 = base64.b64encode(f.read()).decode()
 
     prompt = (
-        "Find EVERY piece of Japanese text on this manga page. This includes dialog in speech bubbles, "
-        "narration boxes, margin text, tiny text. Do NOT skip anything.\n\n"
-        "For EACH text region, estimate its pixel bounding box [x1,y1,x2,y2] (0,0=top-left, x=horizontal). "
-        "Be precise. Use the image dimensions as reference.\n\n"
-        "Return ONLY a JSON array of objects:\n"
-        '[{"japanese":"...","box":[x1,y1,x2,y2]}, ...]'
+        "Find ALL Japanese text on this manga page (dialog, narration, margin text). "
+        "For each, give exact pixel box [x1,y1,x2,y2] (0,0=top-left). "
+        "Return ONLY JSON array: [{\"japanese\":\"...\",\"box\":[x1,y1,x2,y2]},...]"
     )
 
     body = {
@@ -71,7 +68,7 @@ def detect_with_gemini(img_path, api_key):
             ]
         }],
         "response_format": {"type": "json_object"},
-        "max_tokens": 8192,
+        "max_tokens": 4096,
     }
 
     r = requests.post(
@@ -97,14 +94,10 @@ def translate_with_claude(entries, api_key):
         return {}
 
     prompt = (
-        "You are translating manga dialog from Japanese to English. For each line:\n"
-        "- Translate to natural, idiomatic English that matches the original tone "
-        "(casual, formal, intimate, aggressive, playful, etc).\n"
-        "- If it's a sound effect or onomatopoeia (single sounds, ぱん, ドキ, ふあ, ああ, etc), "
-        'mark type as "sfx" with empty translation.\n'
-        "- Do NOT hallucinate, add, or invent text.\n\n"
-        "Return ONLY a JSON array:\n"
-        '[{"id":0,"type":"dialog","translation":"..."}, {"id":1,"type":"sfx","translation":""}, ...]\n\n'
+        "Translate these manga lines to natural English. Preserve tone. "
+        "Mark sound effects (onomatopoeia like ぱん/ドキ/ふあ) as sfx with empty translation. "
+        "Do not fabricate text.\n"
+        "Return ONLY JSON array: [{\"id\":0,\"type\":\"dialog\",\"translation\":\"...\"},...]\n\n"
     )
     for i, t in enumerate(texts):
         prompt += f"{i}: {t}\n"
@@ -216,9 +209,9 @@ def process_single(image_path, output_path, api_key):
         return False
     oh, ow = img.shape[:2]
 
-    resized = cv2.resize(img, (900, int(oh * 900 / ow)), interpolation=cv2.INTER_AREA)
+    resized = cv2.resize(img, (700, int(oh * 700 / ow)), interpolation=cv2.INTER_AREA)
     tmp = image_path + ".tmp.jpg"
-    cv2.imwrite(tmp, resized, [cv2.IMWRITE_JPEG_QUALITY, 70])
+    cv2.imwrite(tmp, resized, [cv2.IMWRITE_JPEG_QUALITY, 60])
 
     print("    Detecting (Gemini)...", end="", flush=True)
     entries = detect_with_gemini(tmp, api_key)
