@@ -7,6 +7,11 @@ import easyocr
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import requests
+import torch
+
+torch.set_num_threads(6)
+torch.set_num_interop_threads(4)
+cv2.setNumThreads(2)
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
@@ -62,28 +67,38 @@ def _wrap_text(text, font, max_w, draw):
 
 def detect_local(img_bgr):
     h, w = img_bgr.shape[:2]
+    scale = 1.0
+    if max(w, h) > 1200:
+        scale = 1200 / max(w, h)
+        small = cv2.resize(img_bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    else:
+        small = img_bgr
+
     reader = _get_reader()
-    detections = reader.readtext(img_bgr)  # numpy array, not path
+    detections = reader.readtext(small)
 
     if not detections:
         return []
 
     mocr = _get_mocr()
+    inv_scale = 1.0 / scale
     boxes = []
     jp_texts = []
 
     for bbox, _, _ in detections:
         pts = np.array(bbox, dtype=np.float32)
-        x, y = int(np.min(pts[:, 0])), int(np.min(pts[:, 1]))
-        x2, y2 = int(np.max(pts[:, 0])), int(np.max(pts[:, 1]))
+        x = int(np.min(pts[:, 0]) * inv_scale)
+        y = int(np.min(pts[:, 1]) * inv_scale)
+        x2 = int(np.max(pts[:, 0]) * inv_scale)
+        y2 = int(np.max(pts[:, 1]) * inv_scale)
         rw, rh = x2 - x, y2 - y
-        if rw < 10 or rh < 6:
+        if rw < 8 or rh < 6:
             continue
 
         pad = 4
         cx, cy = max(0, x - pad), max(0, y - pad)
-        cw = min(rw + 8, w - cx)
-        ch = min(rh + 8, h - cy)
+        cw = min(rw + pad * 2, w - cx)
+        ch = min(rh + pad * 2, h - cy)
         crop = img_bgr[cy: cy + ch, cx: cx + cw]
         if crop.size == 0:
             continue
