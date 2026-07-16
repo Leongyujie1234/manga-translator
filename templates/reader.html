@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manga Reader</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0a0a14; color:#ccc; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+.toolbar { position:sticky; top:0; z-index:100; display:flex; align-items:center; gap:12px; padding:10px 16px; background:#111125; border-bottom:1px solid #222; flex-wrap:wrap; }
+.toolbar button,.toolbar a.btn { padding:8px 16px; border:1px solid #333; border-radius:8px; background:#1a1a35; color:#ddd; font-size:13px; cursor:pointer; text-decoration:none; transition:all .2s; }
+.toolbar button:hover,.toolbar a.btn:hover { background:#252550; border-color:#6c5ce7; }
+.toolbar .info { font-size:13px; color:#888; flex:1; text-align:center; }
+.toolbar .nav { display:flex; gap:4px; }
+.reader { max-width:900px; margin:0 auto; padding:20px 0; }
+.page { margin-bottom:4px; text-align:center; }
+.page img { max-width:100%; height:auto; display:block; margin:0 auto; border-radius:4px; }
+.page .num { font-size:12px; color:#555; padding:4px 0; }
+
+@media (max-width:600px) {
+  .toolbar { gap:6px; padding:8px 10px; }
+  .toolbar button,.toolbar a.btn { padding:6px 10px; font-size:12px; }
+}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <a href="/" class="btn">← New</a>
+  <div class="info">{{ images|length }} page{% if images|length != 1 %}s{% endif %}</div>
+  <div class="nav">
+    <a class="btn" href="/pdf/{{ session_id }}">PDF</a>
+    <a class="btn" href="/zip/{{ session_id }}">ZIP</a>
+  </div>
+</div>
+
+<div class="reader" id="reader">
+  {% for img in images %}
+  <div class="page" id="page{{ loop.index }}">
+    <div class="num">Page {{ loop.index }}</div>
+    <img src="/image/{{ session_id }}/{{ img }}" alt="Page {{ loop.index }}" loading="lazy">
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+let currentPage = 1;
+const totalPages = {{ images|length }};
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === 'j') {
+    currentPage = Math.min(totalPages, currentPage + 1);
+    scrollToPage(currentPage);
+  } else if (e.key === 'ArrowLeft' || e.key === 'k') {
+    currentPage = Math.max(1, currentPage - 1);
+    scrollToPage(currentPage);
+  }
+});
+
+function scrollToPage(n) {
+  const el = document.getElementById('page' + n);
+  if (el) el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+document.addEventListener('scroll', () => {
+  let closest = 1;
+  let minDist = Infinity;
+  for (let i = 1; i <= totalPages; i++) {
+    const el = document.getElementById('page' + i);
+    if (!el) continue;
+    const dist = Math.abs(el.getBoundingClientRect().top);
+    if (dist < minDist) { minDist = dist; closest = i; }
+  }
+  currentPage = closest;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+flask
+requests
+opencv-python-headless
+pillow
+numpy
+img2pdf
+gunicorn

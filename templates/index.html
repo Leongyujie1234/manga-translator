@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manga Translator</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0d0d1a; color:#ddd; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-height:100vh; }
+.container { max-width:720px; margin:0 auto; padding:40px 20px; }
+h1 { text-align:center; font-size:28px; color:#fff; margin-bottom:6px; }
+.sub { text-align:center; color:#888; font-size:14px; margin-bottom:32px; }
+
+.url-bar { display:flex; gap:10px; margin-bottom:24px; }
+.url-bar input { flex:1; padding:12px 16px; border:2px solid #2a2a4a; border-radius:10px; background:#14142a; color:#fff; font-size:15px; outline:none; transition:border .2s; }
+.url-bar input:focus { border-color:#6c5ce7; }
+.url-bar button { padding:12px 24px; border:none; border-radius:10px; background:#6c5ce7; color:#fff; font-size:15px; font-weight:600; cursor:pointer; transition:background .2s; }
+.url-bar button:hover { background:#7c6cf7; }
+.url-bar button:disabled { background:#444; cursor:not-allowed; }
+
+.progress { display:none; background:#14142a; border-radius:10px; padding:20px; margin-bottom:24px; }
+.progress .info { display:flex; justify-content:space-between; margin-bottom:10px; font-size:14px; }
+.progress .bar-wrap { height:8px; background:#2a2a4a; border-radius:4px; overflow:hidden; }
+.progress .bar-fill { height:100%; background:linear-gradient(90deg,#6c5ce7,#a29bfe); border-radius:4px; transition:width .3s; width:0; }
+
+.error { display:none; background:#3a1515; color:#ff6b6b; padding:14px 18px; border-radius:10px; margin-bottom:24px; font-size:14px; }
+
+.presets { margin-bottom:24px; }
+.presets h3 { font-size:14px; color:#888; margin-bottom:8px; }
+.presets .tags { display:flex; gap:8px; flex-wrap:wrap; }
+.presets .tag { padding:6px 14px; background:#14142a; border:1px solid #2a2a4a; border-radius:20px; color:#aaa; font-size:13px; cursor:pointer; transition:all .2s; }
+.presets .tag:hover { border-color:#6c5ce7; color:#fff; }
+
+.warning { margin-top:24px; padding:14px; background:#1a1a3a; border-radius:10px; font-size:13px; color:#aaa; text-align:center; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Manga Translator</h1>
+  <p class="sub">JP raw → EN translated pages</p>
+
+  <form class="url-bar" id="urlForm">
+    <input type="url" id="urlInput" placeholder="Paste nhentai URL or image URL..." required>
+    <button type="submit" id="startBtn">Translate</button>
+  </form>
+
+  <div class="presets">
+    <h3>Supported sources:</h3>
+    <div class="tags">
+      <span class="tag">nhentai.net/g/</span>
+      <span class="tag">Direct image URL</span>
+      <span class="tag">Any page with images</span>
+    </div>
+  </div>
+
+  <div class="progress" id="progress">
+    <div class="info">
+      <span id="progressStatus">Fetching...</span>
+      <span id="progressCount">0/0</span>
+    </div>
+    <div class="bar-wrap"><div class="bar-fill" id="progressBar"></div></div>
+  </div>
+
+  <div class="error" id="errorBox"></div>
+</div>
+
+<script>
+const form = document.getElementById('urlForm');
+const input = document.getElementById('urlInput');
+const btn = document.getElementById('startBtn');
+const progress = document.getElementById('progress');
+const progressStatus = document.getElementById('progressStatus');
+const progressCount = document.getElementById('progressCount');
+const progressBar = document.getElementById('progressBar');
+const errorBox = document.getElementById('errorBox');
+
+let pollHandle = null;
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const url = input.value.trim();
+  if (!url) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Starting...';
+  progress.style.display = 'block';
+  errorBox.style.display = 'none';
+  progressStatus.textContent = 'Fetching pages...';
+  progressCount.textContent = '';
+  progressBar.style.width = '0%';
+
+  try {
+    const resp = await fetch('/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url})
+    });
+    const data = await resp.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    pollStatus(data.session_id);
+  } catch (err) {
+    showError(err.message);
+    btn.disabled = false;
+    btn.textContent = 'Translate';
+  }
+});
+
+function pollStatus(sid) {
+  pollHandle = setInterval(async () => {
+    try {
+      const resp = await fetch('/status/' + sid);
+      const data = await resp.json();
+      if (data.error) {
+        clearInterval(pollHandle);
+        showError(data.error);
+        btn.disabled = false;
+        btn.textContent = 'Translate';
+        return;
+      }
+
+      const pct = data.total ? Math.round(data.done / data.total * 100) : 0;
+      progressBar.style.width = pct + '%';
+      progressCount.textContent = data.done + '/' + data.total;
+
+      if (data.status === 'fetching') {
+        progressStatus.textContent = 'Downloading pages...';
+      } else if (data.status === 'translating') {
+        progressStatus.textContent = 'Translating (' + data.done + '/' + data.total + ')';
+      } else if (data.status === 'done') {
+        clearInterval(pollHandle);
+        progressStatus.textContent = 'Done! Opening reader...';
+        progressBar.style.width = '100%';
+        setTimeout(() => window.location.href = '/reader/' + sid, 600);
+      } else if (data.status === 'error') {
+        clearInterval(pollHandle);
+        showError(data.error || 'Unknown error');
+        btn.disabled = false;
+        btn.textContent = 'Translate';
+      }
+    } catch (err) {
+      clearInterval(pollHandle);
+      showError('Connection lost');
+      btn.disabled = false;
+      btn.textContent = 'Translate';
+    }
+  }, 800);
+}
+
+function showError(msg) {
+  errorBox.style.display = 'block';
+  errorBox.textContent = msg;
+  progress.style.display = 'none';
+}
+</script>
+</body>
+</html>
