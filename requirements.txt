@@ -6,3 +6,6 @@ numpy
 img2pdf
 gunicorn
 cloudscraper
+easyocr
+manga-ocr
+torch
